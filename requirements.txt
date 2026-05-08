@@ -1,0 +1,8 @@
+pin-pink>=4.2.0
+quadprog>=0.1.12
+pinocchio>=3.0.0
+viser>=1.0.0
+rerun-sdk>=0.24.0
+numpy>=1.24
+pyserial>=3.5
+loop-rate-limiters>=1.0
