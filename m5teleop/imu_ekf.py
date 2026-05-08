@@ -102,18 +102,22 @@ class ImuEKF:
         sigma_bias: float = config.EKF_SIGMA_BIAS,
         sigma_acc:  float = config.EKF_SIGMA_ACC,
         acc_gate:   float = config.EKF_ACC_GATE,
+        zaru_threshold: float = config.EKF_ZARU_THRESHOLD,
+        sigma_zaru:     float = config.EKF_SIGMA_ZARU,
     ) -> None:
         # Nominal state
         self._q    = np.array([1.0, 0.0, 0.0, 0.0])  # [w, x, y, z]
         self._bias = np.zeros(3)                        # rad/s
 
-        # Error-state covariance 6×6  ([δθ, δb])
+        # Error-state covariance 6×6  ([dθ, db])
         self._P = np.eye(6) * 0.01
 
-        self._sigma_gyro = sigma_gyro
-        self._sigma_bias = sigma_bias
-        self._sigma_acc  = sigma_acc
-        self._acc_gate   = acc_gate
+        self._sigma_gyro     = sigma_gyro
+        self._sigma_bias     = sigma_bias
+        self._sigma_acc      = sigma_acc
+        self._acc_gate       = acc_gate
+        self._zaru_threshold = zaru_threshold
+        self._sigma_zaru     = sigma_zaru
 
     # ------------------------------------------------------------------
     # Public API
@@ -142,6 +146,9 @@ class ImuEKF:
         omega = np.deg2rad([gx_dps, gy_dps, gz_dps]) - self._bias
         self._predict(omega, dt)
         self._update(np.array([ax, ay, az]))
+        # ZARU: constrain bias (incl. Z-axis) when device appears stationary
+        omega_meas = np.deg2rad([gx_dps, gy_dps, gz_dps])
+        self._update_zaru(omega_meas)
         return self._q.copy()
 
     def reset(self) -> None:
@@ -217,6 +224,34 @@ class ImuEKF:
         )
 
         self._P = F @ self._P @ F.T + Q
+
+    def _update_zaru(self, omega_meas: np.ndarray) -> None:
+        """Zero Angular Rate Update (ZARU).
+
+        When the raw gyro reading is below the threshold the device is
+        (approximately) stationary, so  omega_true ≈ 0  ⇒  omega_meas ≈ bias.
+        Injecting this as a measurement lets the filter identify and remove
+        the Z-axis bias that would otherwise accumulate as yaw drift.
+
+        Measurement model:
+            z = omega_meas,   z_hat = bias
+            H = [0_{3×3},  I_{3×3}]   (observes bias directly)
+        """
+        if float(np.linalg.norm(omega_meas)) > self._zaru_threshold:
+            return
+
+        H       = np.hstack([np.zeros((3, 3)), np.eye(3)])   # 3×6
+        nu      = omega_meas - self._bias                     # innovation
+        R_noise = (self._sigma_zaru ** 2) * np.eye(3)
+        S       = H @ self._P @ H.T + R_noise
+        K       = self._P @ H.T @ np.linalg.inv(S)
+        dx      = K @ nu                                      # shape (6,)
+
+        # Apply only bias correction (dθ from ZARU is negligible at rest)
+        self._bias += dx[3:]
+
+        IKH      = np.eye(6) - K @ H
+        self._P  = IKH @ self._P @ IKH.T + K @ R_noise @ K.T
 
     def _update(self, a_raw: np.ndarray) -> None:
         """Correct orientation with one accelerometer measurement."""
