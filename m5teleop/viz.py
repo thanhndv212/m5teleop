@@ -101,22 +101,45 @@ class TeleopVisualizer:
             rr.log("orient/omega_actual/y", rr.Scalars(float(omega_actual[1])))
             rr.log("orient/omega_actual/z", rr.Scalars(float(omega_actual[2])))
 
-    def log_imu_frame(self, imu: "ImuData") -> None:
-        """Log the estimated IMU body frame as three coloured axis arrows.
+    def log_imu_frame(self, R: np.ndarray) -> None:
+        """Log the EKF-estimated IMU body frame as three coloured axis arrows.
 
-        Red = X, Green = Y, Blue = Z.  Arrows are placed at a fixed position
-        in the 3-D view so they don't overlap the robot.
+        Parameters
+        ----------
+        R : ndarray (3, 3)
+            Rotation matrix from the EKF (body → world).  Columns are the
+            body-frame X, Y, Z axes expressed in world coordinates.
+
+        Red = X, Green = Y, Blue = Z.  Placed at a fixed position in the 3-D
+        view so they don’t overlap the robot.
         """
-        R = _euler_to_rotation_matrix(imu.roll, imu.pitch, imu.yaw)
-        scale = 0.08  # arrow length in metres
+        scale  = 0.08
         origin = np.array([[0.0, 0.28, 0.28]] * 3)
         rr.log(
             "imu/frame",
             rr.Arrows3D(
                 origins=origin,
-                vectors=R.T * scale,  # rows → [X-axis, Y-axis, Z-axis]
+                vectors=R.T * scale,   # rows → [X-axis, Y-axis, Z-axis] in world
                 colors=[[220, 50, 50], [50, 220, 50], [50, 50, 220]],
                 labels=["X", "Y", "Z"],
+            ),
+        )
+
+    def log_ee_target_frame(self, R: np.ndarray) -> None:
+        """Log the controller’s desired EE orientation as coloured axis arrows.
+
+        Placed next to the IMU frame so both are visible simultaneously.
+        Yellow-ish tints to distinguish from the IMU frame.
+        """
+        scale  = 0.08
+        origin = np.array([[0.0, 0.28, 0.14]] * 3)   # slightly offset from IMU frame
+        rr.log(
+            "ee_target/frame",
+            rr.Arrows3D(
+                origins=origin,
+                vectors=R.T * scale,
+                colors=[[255, 160, 50], [160, 255, 50], [50, 160, 255]],
+                labels=["Xt", "Yt", "Zt"],
             ),
         )
 
@@ -163,10 +186,16 @@ class TeleopVisualizer:
         ee_rotation: np.ndarray,
         teleop_active: bool,
         gripper_open: bool,
+        ekf_rotation: np.ndarray | None = None,
     ) -> None:
         """Convenience: log all channels in one call."""
         self.log_imu(imu)
-        self.log_imu_frame(imu)
+        # Use EKF rotation for the IMU frame if available, otherwise raw firmware
+        if ekf_rotation is not None:
+            self.log_imu_frame(ekf_rotation)
+        else:
+            R_fw = _euler_to_rotation_matrix(imu.roll, imu.pitch, imu.yaw)
+            self.log_imu_frame(R_fw)
         self.log_twist(twist)
         self.log_joints(q)
         self.log_ee_pose(ee_translation, ee_rotation)
@@ -185,10 +214,26 @@ class TeleopVisualizer:
         ekf_bias: np.ndarray,
         orient_err: np.ndarray,
         omega_actual: np.ndarray,
+        ee_target_rotation: np.ndarray | None = None,
     ) -> None:
-        """Extended log_all that also records EKF and tracking-error channels."""
+        """Extended log_all that also records EKF and tracking-error channels.
+
+        Parameters
+        ----------
+        ekf_euler           : (roll, pitch, yaw) degrees from EKF
+        ekf_bias            : gyro bias estimate [deg/s] shape (3,)
+        orient_err          : orientation error rotation-vector [rad]
+        omega_actual        : estimated EE angular velocity [rad/s]
+        ee_target_rotation  : 3×3 rotation matrix of controller’s EE target
+        """
+        # Derive EKF rotation matrix for the IMU frame arrows
+        ekf_R = _euler_to_rotation_matrix(ekf_euler[0], ekf_euler[1], ekf_euler[2])
         self.log_all(
-            imu, twist, q, ee_translation, ee_rotation, teleop_active, gripper_open
+            imu, twist, q, ee_translation, ee_rotation,
+            teleop_active, gripper_open,
+            ekf_rotation=ekf_R,
         )
         self.log_ekf(ekf_euler[0], ekf_euler[1], ekf_euler[2], ekf_bias)
-        self.log_orient_error(orient_err, omega_actual)
+        self.log_orient_error(orient_err, omega_actual if teleop_active else None)
+        if ee_target_rotation is not None:
+            self.log_ee_target_frame(ee_target_rotation)

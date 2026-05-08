@@ -123,8 +123,9 @@ class OrientationController:
         self._R_ee_prev:   np.ndarray = np.eye(3)
         self._omega_actual: np.ndarray = np.zeros(3)
 
-        # Latest error (for external logging)
-        self._last_err: np.ndarray = np.zeros(3)
+        # Latest error and target (for external logging)
+        self._last_err:    np.ndarray = np.zeros(3)
+        self._q_target:    np.ndarray = np.array([1.0, 0.0, 0.0, 0.0])
 
     # ------------------------------------------------------------------
     # Public API
@@ -146,6 +147,7 @@ class OrientationController:
         """
         self._q_imu_ref    = q_imu / np.linalg.norm(q_imu)
         self._q_ee_ref     = q_ee  / np.linalg.norm(q_ee)
+        self._q_target     = self._q_ee_ref.copy()  # target = EE at reset
         self._R_ee_prev    = _rot_from_q(self._q_ee_ref)
         self._omega_actual = np.zeros(3)
         self._last_err     = np.zeros(3)
@@ -183,6 +185,7 @@ class OrientationController:
         q_delta  = _qmul(_qinv(self._q_imu_ref), q_imu_n)
         # Apply the same relative rotation to the EE reference orientation
         q_target = _qmul(self._q_ee_ref, q_delta)
+        self._q_target = q_target / np.linalg.norm(q_target)
 
         # ── Layer 1 — outer: orientation error → ω setpoint ──────────
         # q_err = rotation needed to bring q_ee to q_target (in world frame)
@@ -223,3 +226,13 @@ class OrientationController:
     def last_error(self) -> np.ndarray:
         """Last computed orientation error vector [rad]."""
         return self._last_err.copy()
+
+    @property
+    def last_target(self) -> np.ndarray:
+        """Last computed EE target quaternion [w, x, y, z]."""
+        return self._q_target.copy()
+
+    @property
+    def last_target_rotation(self) -> np.ndarray:
+        """Last computed EE target orientation as 3×3 rotation matrix."""
+        return _rot_from_q(self._q_target)

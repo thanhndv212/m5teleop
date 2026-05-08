@@ -447,6 +447,8 @@ def main() -> None:
             # -- Rerun logging
             if viz is not None and imu is not None:
                 ee_pose = ik.get_ee_pose()
+                # EE target rotation: from controller (identity until first reset)
+                ee_target_R = orient_ctrl.last_target_rotation
                 viz.log_all_with_tracking(
                     imu=imu,
                     twist=twist,
@@ -459,6 +461,7 @@ def main() -> None:
                     ekf_bias=ekf.bias_dps,
                     orient_err=orient_err,
                     omega_actual=orient_ctrl._omega_actual,
+                    ee_target_rotation=ee_target_R,
                 )
 
             # -- Rate limiting
