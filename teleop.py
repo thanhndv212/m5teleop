@@ -239,7 +239,7 @@ def main() -> None:
     # 5. IMU reader
     # ------------------------------------------------------------------
     imu_queue: queue.Queue[ImuData] = queue.Queue(maxsize=5)
-    imu_port = args.imu_port or (None if args.dry_run else find_port())
+    imu_port = args.imu_port or (None if args.dry_run else (config.IMU_PORT or find_port()))
 
     imu_reader: ImuReader | None = None
     imu_connected = False

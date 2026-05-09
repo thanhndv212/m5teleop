@@ -219,7 +219,7 @@ def collect_live(duration: float, port: Optional[str]) -> tuple[np.ndarray, floa
     """Record real IMU data for *duration* seconds. Returns (raw (N,6), dt)."""
     from m5imu import ImuReader, find_port as _find_port  # noqa: PLC0415
 
-    p = port or _find_port()
+    p = port or config.IMU_PORT or _find_port()
     if p is None:
         raise RuntimeError(
             "No M5StickC port detected. Provide --port or use --dry-run."
@@ -371,7 +371,7 @@ def mode_live(port: Optional[str], dry_run: bool, params: EkfParams) -> None:
     else:
         from m5imu import ImuReader, find_port as _find_port  # noqa
 
-        p = port or _find_port()
+        p = port or config.IMU_PORT or _find_port()
         if p is None:
             raise RuntimeError("No port found. Provide --port or use --dry-run.")
         reader = ImuReader(port=p, debug=False)

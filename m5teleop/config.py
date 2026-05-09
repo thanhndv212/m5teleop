@@ -24,7 +24,7 @@ LEROBOT_SRC: str = os.environ.get(
 # Serial ports  (set to None for auto-detect)
 # ---------------------------------------------------------------------------
 
-IMU_PORT: str | None = None  # M5StickC Plus (auto-detected)
+IMU_PORT: str | None = "/dev/cu.usbserial-71521F2516"  # M5StickC Plus
 SERVO_PORT: str | None = None  # SO100 servo bus (set via --servo-port)
 
 IMU_BAUDRATE: int = 115_200
