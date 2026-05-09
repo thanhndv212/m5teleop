@@ -89,15 +89,20 @@ IK_SOLVER: str = "quadprog"
 # EKF attitude filter
 # ---------------------------------------------------------------------------
 
-EKF_SIGMA_GYRO: float = 0.005   # rad/s gyro noise std
-EKF_SIGMA_BIAS: float = 0.0001  # rad/s² bias-drift noise std
-EKF_SIGMA_ACC:  float = 0.05    # g accelerometer noise std
-EKF_ACC_GATE:   float = 0.30    # skip accel update if |a_norm - 1| > this (g)
-# Zero Angular Rate Update: applied when |ω_measured| < this threshold (rad/s).
-# Drives bias estimation including Z-axis bias that causes yaw drift.
-EKF_ZARU_THRESHOLD: float = 0.08  # rad/s ≈ 4.6 deg/s
-EKF_SIGMA_ZARU:     float = 0.02  # rad/s — how strictly to enforce zero-rate
-
+# EKF_SIGMA_GYRO: float = 0.005   # rad/s gyro noise std
+# EKF_SIGMA_BIAS: float = 0.0001  # rad/s² bias-drift noise std
+# EKF_SIGMA_ACC:  float = 0.05    # g accelerometer noise std
+# EKF_ACC_GATE:   float = 0.30    # skip accel update if |a_norm - 1| > this (g)
+# # Zero Angular Rate Update: applied when |ω_measured| < this threshold (rad/s).
+# # Drives bias estimation including Z-axis bias that causes yaw drift.
+# EKF_ZARU_THRESHOLD: float = 0.08  # rad/s ≈ 4.6 deg/s
+# EKF_SIGMA_ZARU:     float = 0.02  # rad/s — how strictly to enforce zero-rate
+EKF_SIGMA_GYRO: float = 0.00903500498661041
+EKF_SIGMA_BIAS: float = 5.2429451099732135e-05
+EKF_SIGMA_ACC: float = 0.0619672587953958
+EKF_ACC_GATE: float = 0.6448711453729508
+EKF_ZARU_THRESHOLD: float = 0.06140380758970945
+EKF_SIGMA_ZARU: float = 0.00948651100775047
 # ---------------------------------------------------------------------------
 # Orientation cascade controller
 # ---------------------------------------------------------------------------

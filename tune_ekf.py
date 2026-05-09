@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import math
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -219,7 +220,7 @@ def collect_live(duration: float, port: Optional[str]) -> tuple[np.ndarray, floa
     """Record real IMU data for *duration* seconds. Returns (raw (N,6), dt)."""
     from m5imu import ImuReader, find_port as _find_port  # noqa: PLC0415
 
-    p = port or config.IMU_PORT or _find_port()
+    p = port or _find_port()
     if p is None:
         raise RuntimeError(
             "No M5StickC port detected. Provide --port or use --dry-run."
@@ -332,9 +333,48 @@ def _hr() -> None:
     print("─" * 80)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Config auto-update
+# ─────────────────────────────────────────────────────────────────────────────
+
+_CONFIG_KEYS: dict[str, str] = {
+    "sigma_gyro":     "EKF_SIGMA_GYRO",
+    "sigma_bias":     "EKF_SIGMA_BIAS",
+    "sigma_acc":      "EKF_SIGMA_ACC",
+    "acc_gate":       "EKF_ACC_GATE",
+    "zaru_threshold": "EKF_ZARU_THRESHOLD",
+    "sigma_zaru":     "EKF_SIGMA_ZARU",
+}
+
+_CONFIG_PY = _HERE / "m5teleop" / "config.py"
+
+
+def _update_config_py(params: EkfParams) -> None:
+    """Rewrite the 6 EKF lines in config.py with optimised values in-place."""
+    text = _CONFIG_PY.read_text()
+    (_CONFIG_PY.parent / "config.py.bak").write_text(text)  # backup
+    changed: list[str] = []
+    for field, var in _CONFIG_KEYS.items():
+        new_val = getattr(params, field)
+        pattern = rf'^({re.escape(var)}\s*:\s*float\s*=\s*).+$'
+        replacement = rf'\g<1>{new_val!r}'
+        new_text, n = re.subn(pattern, replacement, text, flags=re.MULTILINE)
+        if n:
+            changed.append(f"  {var} = {new_val!r}")
+            text = new_text
+        else:
+            print(f"[tune_ekf] WARNING: could not find '{var}' in config.py — skipped")
+    _CONFIG_PY.write_text(text)
+    _hr()
+    print("  ✔  config.py updated  (backup → config.py.bak)")
+    for line in changed:
+        print(line)
+    _hr()
+
+
 def _print_config_snippet(params: EkfParams) -> None:
     _hr()
-    print("  ▶  Paste into  m5teleop/m5teleop/config.py :")
+    print("  ▶  Values written to  m5teleop/m5teleop/config.py :")
     _hr()
     print(f"  EKF_SIGMA_GYRO:     float = {params.sigma_gyro!r}")
     print(f"  EKF_SIGMA_BIAS:     float = {params.sigma_bias!r}")
@@ -371,7 +411,7 @@ def mode_live(port: Optional[str], dry_run: bool, params: EkfParams) -> None:
     else:
         from m5imu import ImuReader, find_port as _find_port  # noqa
 
-        p = port or config.IMU_PORT or _find_port()
+        p = port or _find_port()
         if p is None:
             raise RuntimeError("No port found. Provide --port or use --dry-run.")
         reader = ImuReader(port=p, debug=False)
@@ -603,9 +643,13 @@ def main() -> None:
 
     p_sweep = sub.add_parser("sweep", help="Grid-search EKF parameter space")
     _add_recording_args(p_sweep)
+    p_sweep.add_argument("--apply", action="store_true",
+                         help="Write best params to config.py automatically")
 
     p_opt = sub.add_parser("optimize", help="Nelder-Mead fine-tune (requires scipy)")
     _add_recording_args(p_opt)
+    p_opt.add_argument("--no-apply", action="store_true",
+                       help="Skip automatic config.py update after optimize")
 
     args = parser.parse_args()
 
@@ -635,6 +679,8 @@ def main() -> None:
         delta = (baseline.score - best_m.score) / max(baseline.score, 1e-9) * 100
         print(f"\n  Improvement over baseline: {baseline.score:.4f} → {best_m.score:.4f}"
               f"  ({delta:+.1f}%)")
+        if getattr(args, "apply", False):
+            _update_config_py(best_p)
         _print_config_snippet(best_p)
 
     elif args.mode == "optimize":
@@ -656,6 +702,8 @@ def main() -> None:
         print(f"  {best_m.one_line()}")
         print(f"\n  Improvement over baseline: {baseline.score:.4f} → {best_m.score:.4f}"
               f"  ({delta:+.1f}%)")
+        if not getattr(args, "no_apply", False):
+            _update_config_py(best_p)
         _print_config_snippet(best_p)
 
 
