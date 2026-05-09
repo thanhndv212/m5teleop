@@ -325,7 +325,13 @@ class SimInterface:
                 imu_yaw = self._imu_yaw
 
             if q is not None and self._viser_urdf is not None:
-                cfg = q[: len(self._viser_urdf.get_actuated_joint_names())]
+                n_joints = len(self._viser_urdf.get_actuated_joint_names())
+                cfg = q[:n_joints].copy()
+                # Inject gripper joint (last DOF = URDF joint 6, gripper→jaw)
+                gripper_rad = np.radians(
+                    config.GRIPPER_OPEN_DEG if g_open else config.GRIPPER_CLOSED_DEG
+                )
+                cfg[n_joints - 1] = gripper_rad
                 self._viser_urdf.update_cfg(cfg)
 
                 # EE frame marker
