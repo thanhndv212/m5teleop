@@ -368,12 +368,8 @@ class _Lpf:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _rr_init_live() -> None:
-    """Initialise Rerun recording for the live mode; connect to running viewer."""
-    rr.init("tune_ekf/live", spawn=False)
-    try:
-        rr.connect_grpc(flush_timeout_sec=0.5)
-    except Exception:
-        pass  # no viewer running — logging is silently dropped
+    """Initialise Rerun recording for the live mode; spawn the viewer automatically."""
+    rr.init("tune_ekf/live", spawn=True)
 
     # Static world-frame reference axes (logged once, never updated)
     scale = 0.10
