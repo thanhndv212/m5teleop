@@ -97,12 +97,12 @@ IK_SOLVER: str = "quadprog"
 # # Drives bias estimation including Z-axis bias that causes yaw drift.
 # EKF_ZARU_THRESHOLD: float = 0.08  # rad/s ≈ 4.6 deg/s
 # EKF_SIGMA_ZARU:     float = 0.02  # rad/s — how strictly to enforce zero-rate
-EKF_SIGMA_GYRO: float = 0.00903500498661041
-EKF_SIGMA_BIAS: float = 5.2429451099732135e-05
-EKF_SIGMA_ACC: float = 0.0619672587953958
-EKF_ACC_GATE: float = 0.6448711453729508
-EKF_ZARU_THRESHOLD: float = 0.06140380758970945
-EKF_SIGMA_ZARU: float = 0.00948651100775047
+EKF_SIGMA_GYRO: float = 0.03970497239640512
+EKF_SIGMA_BIAS: float = 0.0030425198044079296
+EKF_SIGMA_ACC: float = 0.08554743845270743
+EKF_ACC_GATE: float = 0.397639933650062
+EKF_ZARU_THRESHOLD: float = 0.05264591901790368
+EKF_SIGMA_ZARU: float = 0.0001934787442036969
 # ---------------------------------------------------------------------------
 # Orientation cascade controller
 # ---------------------------------------------------------------------------
