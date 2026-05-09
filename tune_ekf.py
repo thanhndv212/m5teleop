@@ -50,6 +50,7 @@ sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_HERE.parent / "m5imu"))
 
 from m5teleop.imu_ekf import ImuEKF
+from m5teleop.lpf import Lpf
 from m5teleop import config
 
 
@@ -335,35 +336,6 @@ def _hr() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Low-pass filter
-# ─────────────────────────────────────────────────────────────────────────────
-
-class _Lpf:
-    """Per-channel exponential moving average filter.
-
-    Parameters
-    ----------
-    alpha : float
-        Smoothing factor in (0, 1].  alpha=1 → no filtering (pass-through).
-        alpha=0.3 → moderate smoothing (matches config.LPF_ALPHA).
-    """
-
-    def __init__(self, alpha: float = config.LPF_ALPHA) -> None:
-        self._alpha = alpha
-        self._state: dict[str, float] = {}
-
-    def update(self, **kwargs: float) -> dict[str, float]:
-        """Feed new raw values; return dict of filtered values."""
-        out: dict[str, float] = {}
-        for k, v in kwargs.items():
-            if k not in self._state:
-                self._state[k] = v   # seed with first sample
-            self._state[k] = self._alpha * v + (1.0 - self._alpha) * self._state[k]
-            out[k] = self._state[k]
-        return out
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Rerun helpers (used by mode_live)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -538,7 +510,7 @@ def mode_live(port: Optional[str], dry_run: bool, params: EkfParams) -> None:
                 prev = now
 
     ekf  = params.make_ekf()
-    lpf  = _Lpf(alpha=config.LPF_ALPHA)
+    lpf  = Lpf(channels=6, alpha=config.LPF_ALPHA)
 
     yaw_ref     = None
     max_yaw_dev = 0.0
@@ -582,8 +554,12 @@ def mode_live(port: Optional[str], dry_run: bool, params: EkfParams) -> None:
                 ref_r = ref_p = 0.0
 
             # ── Rerun: LPF + sensor streams + frame ──────────────────────────
-            raw_vals  = dict(ax=ax, ay=ay, az=az, gx=gx, gy=gy, gz=gz)
-            filt_vals = lpf.update(**raw_vals)
+            raw_arr  = np.array([ax, ay, az, gx, gy, gz])
+            filt_arr = lpf.update(raw_arr)
+            raw_vals  = dict(ax=ax,          ay=ay,          az=az,
+                             gx=gx,          gy=gy,          gz=gz)
+            filt_vals = dict(ax=filt_arr[0], ay=filt_arr[1], az=filt_arr[2],
+                             gx=filt_arr[3], gy=filt_arr[4], gz=filt_arr[5])
 
             rr.set_time_seconds("t", elapsed)
             _rr_log_sensors(raw_vals, filt_vals, roll, pitch, yaw, ref_r, ref_p, bias)

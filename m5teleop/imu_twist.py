@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from . import config
+from .lpf import Lpf
 
 if TYPE_CHECKING:
     from m5imu import ImuData
@@ -58,14 +59,11 @@ class ImuTwistConverter:
         self._max_lin = max_lin_vel
         self._max_ang = max_ang_vel
 
-        # Low-pass filter state: [ax, ay, az, gx, gy, gz]
-        self._lpf: np.ndarray = np.zeros(6)
-        self._initialised = False
+        self._lpf = Lpf(channels=6, alpha=lpf_alpha)
 
     def reset(self) -> None:
         """Reset filter state (call when teleop is re-enabled)."""
-        self._lpf[:] = 0.0
-        self._initialised = False
+        self._lpf.reset()
 
     def to_twist(self, imu: "ImuData") -> np.ndarray:
         """Return ``np.ndarray([vx, vy, vz, ωx, ωy, ωz])`` from one sample.
@@ -86,13 +84,7 @@ class ImuTwistConverter:
             ]
         )
 
-        if not self._initialised:
-            self._lpf = raw.copy()
-            self._initialised = True
-        else:
-            self._lpf = self._alpha * raw + (1.0 - self._alpha) * self._lpf
-
-        ax, ay, az, gx, gy, gz = self._lpf
+        ax, ay, az, gx, gy, gz = self._lpf.update(raw)
 
         # Tilt → linear velocity
         pitch = math.atan2(ay, math.hypot(ax, az))  # forward/back tilt
