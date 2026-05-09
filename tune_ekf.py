@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import rerun as rr
 
 _HERE = Path(__file__).parent
 sys.path.insert(0, str(_HERE))
@@ -334,6 +335,121 @@ def _hr() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Low-pass filter
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _Lpf:
+    """Per-channel exponential moving average filter.
+
+    Parameters
+    ----------
+    alpha : float
+        Smoothing factor in (0, 1].  alpha=1 → no filtering (pass-through).
+        alpha=0.3 → moderate smoothing (matches config.LPF_ALPHA).
+    """
+
+    def __init__(self, alpha: float = config.LPF_ALPHA) -> None:
+        self._alpha = alpha
+        self._state: dict[str, float] = {}
+
+    def update(self, **kwargs: float) -> dict[str, float]:
+        """Feed new raw values; return dict of filtered values."""
+        out: dict[str, float] = {}
+        for k, v in kwargs.items():
+            if k not in self._state:
+                self._state[k] = v   # seed with first sample
+            self._state[k] = self._alpha * v + (1.0 - self._alpha) * self._state[k]
+            out[k] = self._state[k]
+        return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rerun helpers (used by mode_live)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _rr_init_live() -> None:
+    """Initialise Rerun recording for the live mode; connect to running viewer."""
+    rr.init("tune_ekf/live", spawn=False)
+    try:
+        rr.connect_grpc(flush_timeout_sec=0.5)
+    except Exception:
+        pass  # no viewer running — logging is silently dropped
+
+    # Static world-frame reference axes (logged once, never updated)
+    scale = 0.10
+    rr.log(
+        "world/origin",
+        rr.Arrows3D(
+            origins=[[0, 0, 0]] * 3,
+            vectors=[[scale, 0, 0], [0, scale, 0], [0, 0, scale]],
+            colors=[[180, 60, 60], [60, 180, 60], [60, 60, 180]],
+            labels=["Xw", "Yw", "Zw"],
+        ),
+        static=True,
+    )
+    rr.log(
+        "world/origin/point",
+        rr.Points3D(positions=[[0, 0, 0]], radii=[0.005], colors=[[240, 240, 240]]),
+        static=True,
+    )
+
+
+def _rr_log_imu_frame(R: np.ndarray) -> None:
+    """Log the EKF-estimated IMU body frame as coloured arrows in world space.
+
+    R : (3, 3) rotation matrix  body → world.
+    Body X = red, Y = green, Z = blue.
+    Displayed at the world origin so it stays coincident with the static axes.
+    """
+    scale  = 0.08
+    origin = np.zeros((3, 3))
+    rr.log(
+        "world/imu_frame",
+        rr.Arrows3D(
+            origins=origin,
+            vectors=R.T * scale,   # columns of R are body axes in world coords
+            colors=[[220, 50, 50], [50, 220, 50], [50, 50, 220]],
+            labels=["Xb", "Yb", "Zb"],
+        ),
+    )
+
+
+def _rr_log_sensors(
+    raw: dict[str, float],
+    filt: dict[str, float],
+    roll: float, pitch: float, yaw: float,
+    ref_roll: float, ref_pitch: float,
+    bias: np.ndarray,
+) -> None:
+    """Log raw + filtered sensor streams and all orientation estimates to Rerun."""
+    # ── accelerometer ────────────────────────────────────────────────────────
+    for axis in ("x", "y", "z"):
+        key = f"a{axis}"
+        rr.log(f"imu/accel/{axis}/raw",      rr.Scalars(raw[key]))
+        rr.log(f"imu/accel/{axis}/filtered", rr.Scalars(filt[key]))
+
+    # ── gyroscope ─────────────────────────────────────────────────────────────
+    for axis in ("x", "y", "z"):
+        key = f"g{axis}"
+        rr.log(f"imu/gyro/{axis}/raw",      rr.Scalars(raw[key]))
+        rr.log(f"imu/gyro/{axis}/filtered", rr.Scalars(filt[key]))
+
+    # ── EKF orientation ───────────────────────────────────────────────────────
+    rr.log("orientation/ekf/roll",  rr.Scalars(roll))
+    rr.log("orientation/ekf/pitch", rr.Scalars(pitch))
+    rr.log("orientation/ekf/yaw",   rr.Scalars(yaw))
+
+    # ── accel-only reference (pitch + roll only — no yaw) ─────────────────────
+    rr.log("orientation/accel_ref/roll",  rr.Scalars(ref_roll))
+    rr.log("orientation/accel_ref/pitch", rr.Scalars(ref_pitch))
+
+    # ── EKF gyro bias estimate ─────────────────────────────────────────────────
+    rr.log("ekf/bias/x", rr.Scalars(float(bias[0])))
+    rr.log("ekf/bias/y", rr.Scalars(float(bias[1])))
+    rr.log("ekf/bias/z", rr.Scalars(float(bias[2])))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Config auto-update
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -425,12 +541,17 @@ def mode_live(port: Optional[str], dry_run: bool, params: EkfParams) -> None:
                 yield imu.ax, imu.ay, imu.az, imu.gx, imu.gy, imu.gz, now - prev
                 prev = now
 
-    ekf = params.make_ekf()
+    ekf  = params.make_ekf()
+    lpf  = _Lpf(alpha=config.LPF_ALPHA)
+
     yaw_ref     = None
     max_yaw_dev = 0.0
     t0          = time.perf_counter()
     n           = 0
     NLINES      = 9
+
+    # ── Rerun setup ──────────────────────────────────────────────────────────
+    _rr_init_live()
 
     print(f"\nParams : {params}")
     print("Ctrl-C to stop.\n")
@@ -464,6 +585,15 @@ def mode_live(port: Optional[str], dry_run: bool, params: EkfParams) -> None:
             else:
                 ref_r = ref_p = 0.0
 
+            # ── Rerun: LPF + sensor streams + frame ──────────────────────────
+            raw_vals  = dict(ax=ax, ay=ay, az=az, gx=gx, gy=gy, gz=gz)
+            filt_vals = lpf.update(**raw_vals)
+
+            rr.set_time_seconds("t", elapsed)
+            _rr_log_sensors(raw_vals, filt_vals, roll, pitch, yaw, ref_r, ref_p, bias)
+            _rr_log_imu_frame(ekf.rotation_matrix)
+
+            # ── Terminal display ──────────────────────────────────────────────
             print(f"\033[{NLINES}A", end="")
             hz_str = f"{n/elapsed:.0f}" if elapsed > 0 else "--"
             print(f"  Elapsed:    {elapsed:7.1f} s     n={n:7d}     Hz≈{hz_str}")
