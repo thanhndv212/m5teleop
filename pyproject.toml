@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "m5teleop"
+version = "0.1.0"
+description = "IMU teleoperation of SO-ARM100 via M5StickC Plus 1.1"
+requires-python = ">=3.10"
+dependencies = [
+    "pin-pink>=4.2.0",
+    "quadprog>=0.1.12",
+    "pinocchio>=3.0.0",
+    "viser>=1.0.0",
+    "rerun-sdk>=0.24.0",
+    "numpy>=1.24",
+    "pyserial>=3.5",
+    "loop-rate-limiters>=1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["m5teleop*"]
