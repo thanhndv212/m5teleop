@@ -38,13 +38,15 @@ soarm-ws/
 │   │       └── m5imu_firmware.ino ← Flash to M5StickC Plus 1.1
 │   └── m5imu/
 │       ├── imu_data.py            ← ImuData dataclass (accel, gyro, temp,
-│       │                              btn_a, btn_b, pitch, roll, yaw)
+│       │                              btn_a, btn_b; pitch/roll/yaw kept as
+│       │                              0.0 defaults for backward-compat)
 │       └── reader.py              ← ImuReader (USB serial, JSON, 100 Hz)
 │
 ├── m5teleop/                      Phase 3–11 – Teleop package
 │   ├── m5teleop/
 │   │   ├── __init__.py
 │   │   ├── config.py              ← All tunable parameters
+│   │   ├── lpf.py                 ← Centralised EMA low-pass filter (Lpf)
 │   │   ├── imu_ekf.py             ← ESKF attitude filter + ZARU
 │   │   ├── orient_controller.py   ← Two-layer cascade P-P controller
 │   │   ├── imu_twist.py           ← Legacy IMU → 6D twist (kept, unused)
@@ -79,25 +81,28 @@ pip install pin-pink quadprog viser rerun-sdk pyserial loop-rate-limiters
 ### Phase 1 — Firmware ✅
 **File:** `m5imu/firmware/m5imu_firmware/m5imu_firmware.ino`
 
-**What was done:**
+**Current state — minimal raw IMU streamer (CF/orientation stripped):**
+
 - MPU6886 reads accelerometer + gyroscope at ~100 Hz
-- JSON output over USB serial (115200 baud): `{"ax":.., "ay":.., "az":.., "gx":.., "gy":.., "gz":.., "temp":.., "pitch":.., "roll":.., "yaw":.., "btnA":0, "btnB":0}`
-- **Complementary filter** for pitch and roll: `CF_ALPHA = 0.98` (98% gyro, 2% accel)
-- **Yaw integration** with dead-zone (`|gz| > 1.5 dps`) and exponential decay when stationary (`g_yaw *= 0.9998` per sample, τ ≈ 50 s) to reduce gyro-noise-driven drift
-- **Button detection** uses `M5.BtnA.wasPressed()` / `M5.BtnB.wasPressed()` (latch, not raw level) to reliably catch short taps at 100 Hz
-- **LCD display** (landscape): live `P/R/Y` in large text; yaw shown in yellow to remind that it drifts without a magnetometer
+- JSON output over USB serial (115200 baud):
+  `{"ax":.., "ay":.., "az":.., "gx":.., "gy":.., "gz":.., "temp":.., "btnA":0, "btnB":0}`
+  — no `pitch/roll/yaw`; orientation is handled entirely by the Python ESKF
+- **Gyro bias calibration** at startup: averages 500 samples (~2.5 s), subtracts per-axis bias before streaming. LCD shows `CAL gyro...` with progress counter.
+- **Button detection** latches `wasPressed()` so short taps are never missed at 100 Hz
+- **LCD display** (landscape): Hz / Temperature / `Bz` (Z-gyro bias) / sample count / button states
+- **Timing stability:** `delay(1)` when idle prevents tight-loop `M5.update()` calls from saturating the I2C bus between samples (~100 kHz idle spin → ~1 kHz). LCD update is skipped in the same iteration as an IMU sample to prevent SPI writes stalling the next sample.
 
 **How to flash:**
 1. Open `m5imu_firmware.ino` in Arduino IDE
 2. Board: **M5Stick-C-Plus** · Port: your M5StickC USB serial
-3. Upload — LCD shows **IMU OK** and live values
+3. Upload — LCD shows **IMU OK**, then **CAL gyro...** (hold still ~2.5 s), then live Hz/T/Bz
 
 **Verify:**
 ```bash
 conda activate gosim
 cd soarm-ws/m5imu
 python m5imu/reader.py --debug
-# RAW: b'{"ax":...,"pitch":...,"btnA":0,"btnB":0}\n'
+# RAW: b'{"ax":...,"gz":...,"temp":...,"btnA":0,"btnB":0}\n'
 ```
 
 ---
@@ -106,10 +111,29 @@ python m5imu/reader.py --debug
 **Files:** `m5imu/m5imu/imu_data.py`, `m5imu/m5imu/reader.py`
 
 **What was done:**
-- `ImuData` dataclass: `ax, ay, az, gx, gy, gz, temp, btn_a, btn_b, pitch, roll, yaw`
-- `ImuReader` parses JSON; `pitch/roll/yaw` from firmware CF filter via `.get()` with 0.0 fallback (backward-compatible with older firmware)
+- `ImuData` dataclass: `ax, ay, az, gx, gy, gz, temp, btn_a, btn_b`; `pitch/roll/yaw` kept as `0.0` defaults for backward-compatibility but not populated by current firmware
+- `ImuReader` parses JSON; mandatory keys: `ax…gz, temp, btnA, btnB`; optional `pitch/roll/yaw` via `.get()` with 0.0 fallback
 - Serial opened with `dsrdtr=False, rtscts=False` to suppress auto-reset on macOS
-- 0.5 s sleep after open + `reset_input_buffer()` to discard stale bytes
+- 0.1 s sleep after open + `reset_input_buffer()` to discard stale bytes
+
+---
+
+### Phase 2b — Low-Pass Filter (`lpf.py`) ✅
+**File:** `m5teleop/m5teleop/lpf.py`
+
+Centralised single source of truth for all raw IMU smoothing across the pipeline.
+
+- `Lpf(channels, alpha)` — first-order EMA: `y = α·x + (1−α)·y_prev`
+- Seeds from first sample → no startup transient
+- `reset()` clears state (call when teleop re-enables after a pause)
+- `alpha` defaults to `config.LPF_ALPHA = 0.3`
+- Replaces inline numpy EMA in `imu_twist.py` and private `_Lpf` dict class in `tune_ekf.py`
+
+```python
+from m5teleop.lpf import Lpf
+lpf = Lpf(channels=6)           # ax, ay, az, gx, gy, gz
+filtered = lpf.update(raw_arr)  # numpy array in, same shape out
+```
 
 ---
 
@@ -161,6 +185,7 @@ Key parameters:
 - `ViserUrdf(server, Path(urdf_path))` loads robot into browser scene
 - GUI panels: **Connection** (IMU port + servo port text boxes with connect/disconnect buttons) and **Teleoperation** (status display + **⊕ Zero IMU** reset button)
 - `update(q, teleop_active, gripper_open)` updates joint angles at 50 Hz
+- **Gripper joint fix:** the IK solver only writes joints 0–4; `q[5]` is always 0.0 from the IK output. `_run()` copies the cfg slice and overwrites the last element with `np.radians(GRIPPER_OPEN/CLOSED_DEG)` based on `gripper_open` before calling `update_cfg` — otherwise the jaw never moves in the viewer.
 - `update_imu_frame(pitch, roll, yaw)` updates a floating coordinate frame (EKF orientation)
 - `on_zero_reset: Callable` callback — called when Zero IMU button is pressed; wired to `_do_zero_reset()` in `teleop.py`
 - `on_imu_connect / on_imu_disconnect / on_servo_connect / on_servo_disconnect` callbacks push commands to a thread-safe queue so the main loop handles all serial I/O
@@ -177,7 +202,7 @@ Logged channels:
 | `imu/accel/{x,y,z}` | Accelerometer (g) |
 | `imu/gyro/{x,y,z}` | Gyroscope (°/s) |
 | `imu/temp` | Temperature (°C) |
-| `imu/orientation/{pitch,roll,yaw}` | Firmware CF angles (°) |
+| `imu/orientation/{pitch,roll,yaw}` | Firmware CF angles (°) — always 0.0 with current firmware |
 | `imu/frame` | EKF body-frame axes — Arrows3D (RGB) |
 | `ee_target/frame` | Controller target frame — Arrows3D (orange) |
 | `ekf/orientation/{roll,pitch,yaw}` | EKF attitude estimate (°) |
@@ -270,22 +295,14 @@ Layer 2 (inner): ω_actual = vee(Ṙ Rᵀ)     (finite difference)
 
 ### Phase 7 — Yaw Drift Mitigation ✅
 
-Two-pronged approach:
+**Python ESKF ZARU only** — firmware CF/yaw code has been fully stripped:
 
-**Firmware (`m5imu_firmware.ino`):**
-```cpp
-static const float YAW_GYRO_THRESHOLD = 1.5f;  // deg/s
-static const float YAW_DECAY          = 0.9998f; // τ ≈ 50 s
-if (fabsf(gz) > YAW_GYRO_THRESHOLD) {
-    g_yaw += gz * DT;
-} else {
-    g_yaw *= YAW_DECAY;   // gentle pull toward 0 when stationary
-}
-```
-→ Prevents noise-floor integration from accumulating; LCD yaw stays near zero when still.
+The firmware no longer computes or streams pitch/roll/yaw. All orientation estimation — including yaw drift correction — is handled by the Python ESKF:
 
-**EKF ZARU (see Phase 4):**
-→ Identifies and removes the Z-axis gyro bias that drives long-term yaw drift in the orientation estimate used by the controller.
+- **ZARU** (Zero Angular Rate Update): when `|ω_measured| < EKF_ZARU_THRESHOLD`, the EKF injects a pseudo-measurement `ω_true ≈ 0`, driving Z-axis bias identification to near-zero drift. This is the sole yaw correction mechanism.
+- **Firmware gyro bias calibration** (500-sample average at boot) removes the bulk of the constant bias before streaming, giving ZARU a smaller residual to correct.
+
+> The old firmware `YAW_DECAY` and `YAW_GYRO_THRESHOLD` constants have been removed. They only affected the firmware LCD display and were never used by the Python controller.
 
 ---
 
@@ -421,8 +438,6 @@ python teleop.py --servo-port /dev/cu.usbserial-XXXX
 
 **Small tremors when holding still** → raise `EKF_ZARU_THRESHOLD` to suppress more motion;
 lower `EKF_SIGMA_ZARU` to trust ZARU more
-
-**Yaw still drifts in firmware LCD** → lower `YAW_GYRO_THRESHOLD` (catches more noise, risks integrating real motion) or lower `YAW_DECAY` (faster pull to zero)
 
 **EKF yaw drifts in controller** → ensure ZARU is active: verify `|ω| < EKF_ZARU_THRESHOLD` when stationary. Raise `EKF_SIGMA_GYRO` if gyro is noisier than expected.
 
