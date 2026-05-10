@@ -1,10 +1,61 @@
+# Python
 __pycache__/
 *.py[cod]
-*.egg-info/
+*.pyo
+*.pyd
+*.so
+*.dylib
+
+# Packaging / build
 *.egg
+*.egg-info/
 dist/
 build/
 .eggs/
-*.so
+wheels/
+sdist/
+*.whl
+
+# pip editable installs
+*.dist-info/
+direct_url.json
+
+# Virtual environments
 .env
 .venv
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+*.xml
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+.pytype/
+.ruff_cache/
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+*.npz
+*.bak
+logs/
+*.log
+rerun_data/
