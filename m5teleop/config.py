@@ -1,6 +1,5 @@
 """Central configuration for m5teleop."""
 
-import os
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -12,12 +11,6 @@ _HERE = Path(__file__).parent
 # Absolute path to the SO100 URDF
 URDF_PATH: str = str(
     _HERE.parent.parent / "SO-ARM100" / "Simulation" / "SO100" / "so100.urdf"
-)
-
-# Path to lerobot source (override via env var LEROBOT_SRC)
-LEROBOT_SRC: str = os.environ.get(
-    "LEROBOT_SRC",
-    str(Path.home() / "Develop" / "openarm-ws" / "lerobot" / "src"),
 )
 
 # ---------------------------------------------------------------------------

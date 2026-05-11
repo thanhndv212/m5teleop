@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from . import config
-
-# Make lerobot importable regardless of install state
-if config.LEROBOT_SRC not in sys.path:
-    sys.path.insert(0, config.LEROBOT_SRC)
 
 if TYPE_CHECKING:
     pass

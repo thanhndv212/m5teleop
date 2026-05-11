@@ -37,7 +37,7 @@ sys.path.insert(0, str(_HERE.parent / "m5imu"))
 
 from m5imu import ImuData, ImuReader, find_port
 from m5teleop import config
-from m5teleop.arm_interface import ArmInterface
+from m5teleop.lerobot_soarm_interface import ArmInterface
 from m5teleop.ik_solver import IKSolver
 from m5teleop.imu_ekf import ImuEKF
 from m5teleop.imu_twist import ImuTwistConverter
