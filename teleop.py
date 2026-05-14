@@ -35,7 +35,7 @@ _HERE = Path(__file__).parent
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_HERE.parent / "m5imu"))
 
-from m5imu import ImuData, ImuReader, find_port
+from imu_sdk import ImuData, ImuReader, find_port
 from m5teleop import config
 from m5teleop.lerobot_soarm_interface import ArmInterface
 from m5teleop.ik_solver import IKSolver

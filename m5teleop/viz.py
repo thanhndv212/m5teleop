@@ -10,7 +10,7 @@ import rerun as rr
 from . import config
 
 if TYPE_CHECKING:
-    from m5imu import ImuData
+    from imu_sdk import ImuData
 
 
 def _euler_to_rotation_matrix(roll_deg: float, pitch_deg: float, yaw_deg: float) -> np.ndarray:

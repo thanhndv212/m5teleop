@@ -220,7 +220,7 @@ _DT_FIRMWARE = 1.0 / 100.0   # M5StickC target: 100 Hz
 
 def collect_live(duration: float, port: Optional[str]) -> tuple[np.ndarray, float]:
     """Record real IMU data for *duration* seconds. Returns (raw (N,6), dt)."""
-    from m5imu import ImuReader, find_port as _find_port  # noqa: PLC0415
+    from imu_sdk import ImuReader, find_port as _find_port  # noqa: PLC0415
 
     p = port or _find_port()
     if p is None:
@@ -493,7 +493,7 @@ def mode_live(port: Optional[str], dry_run: bool, params: EkfParams) -> None:
                     _dt,
                 )
     else:
-        from m5imu import ImuReader, find_port as _find_port  # noqa
+        from imu_sdk import ImuReader, find_port as _find_port  # noqa
 
         p = port or _find_port()
         if p is None:

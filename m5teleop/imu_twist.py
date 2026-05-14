@@ -11,7 +11,7 @@ from . import config
 from .lpf import Lpf
 
 if TYPE_CHECKING:
-    from m5imu import ImuData
+    from imu_sdk import ImuData
 
 
 def _deadzone(value: float, threshold: float) -> float:
