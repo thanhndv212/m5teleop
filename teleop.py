@@ -46,6 +46,14 @@ from m5teleop.sim_interface import SimInterface
 from m5teleop.viz import TeleopVisualizer
 import pinocchio as pin
 
+# Optional: dataset recording (requires lerobot + soarm_learn)
+try:
+    from soarm_learn import TeleopRecorder
+
+    _RECORDER_AVAILABLE = True
+except ImportError:
+    _RECORDER_AVAILABLE = False
+
 # ---------------------------------------------------------------------------
 # Graceful shutdown
 # ---------------------------------------------------------------------------
@@ -157,6 +165,32 @@ def main() -> None:
         default=config.CONTROL_HZ,
         help=f"Control loop rate (default {config.CONTROL_HZ} Hz)",
     )
+    parser.add_argument(
+        "--record",
+        action="store_true",
+        help="Record teleop episodes as a LeRobot dataset",
+    )
+    parser.add_argument(
+        "--record-repo-id",
+        default="thanhndv212/soarm100-teleop-v1",
+        help="HF dataset repo ID (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--record-root",
+        default=None,
+        help="Local output directory for dataset",
+    )
+    parser.add_argument(
+        "--record-task",
+        default="teleoperated demonstration",
+        help="Task description for recorded episodes",
+    )
+    parser.add_argument(
+        "--record-fps",
+        type=int,
+        default=50,
+        help="Recording frequency (default: %(default)s Hz)",
+    )
     args = parser.parse_args()
 
     dt = 1.0 / args.hz
@@ -234,6 +268,25 @@ def main() -> None:
         except Exception as exc:
             print(f"[teleop] Rerun unavailable ({exc}), continuing without it")
             viz = None
+
+    # ------------------------------------------------------------------
+    # 4b. Dataset recorder (optional, requires soarm_learn + lerobot)
+    # ------------------------------------------------------------------
+    recorder = None  # TeleopRecorder | None
+    if args.record:
+        if not _RECORDER_AVAILABLE:
+            print(
+                "[teleop] WARNING: soarm_learn not installed. "
+                "Install with: pip install -e soarm_learn/"
+            )
+        else:
+            recorder = TeleopRecorder(
+                repo_id=args.record_repo_id,
+                root=args.record_root,
+                fps=args.record_fps,
+                task=args.record_task,
+            )
+            recorder.start()
 
     # ------------------------------------------------------------------
     # 5. IMU reader
@@ -464,6 +517,14 @@ def main() -> None:
                     ee_target_rotation=ee_target_R,
                 )
 
+            # -- Dataset recording
+            if recorder is not None:
+                recorder.add_frame(
+                    q=q_current,
+                    gripper_open=arm.gripper_is_open,
+                    teleop_active=teleop_active,
+                )
+
             # -- Rate limiting
             loop_count += 1
             elapsed = time.perf_counter() - t_start
@@ -481,6 +542,8 @@ def main() -> None:
         _stop_imu()
         if sim is not None:
             sim.stop()
+        if recorder is not None:
+            recorder.stop()
         arm.disconnect()
         print("[teleop] Done.")
 
