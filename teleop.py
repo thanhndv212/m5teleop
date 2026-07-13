@@ -46,9 +46,9 @@ from m5teleop.sim_interface import SimInterface
 from m5teleop.viz import TeleopVisualizer
 import pinocchio as pin
 
-# Optional: dataset recording (requires lerobot + soarm_learn)
+# Optional: dataset recording (requires lerobot + soarm_lerobot)
 try:
-    from soarm_learn import TeleopRecorder
+    from soarm_lerobot import TeleopRecorder
 
     _RECORDER_AVAILABLE = True
 except ImportError:
@@ -270,14 +270,14 @@ def main() -> None:
             viz = None
 
     # ------------------------------------------------------------------
-    # 4b. Dataset recorder (optional, requires soarm_learn + lerobot)
+    # 4b. Dataset recorder (optional, requires soarm_lerobot + lerobot)
     # ------------------------------------------------------------------
     recorder = None  # TeleopRecorder | None
     if args.record:
         if not _RECORDER_AVAILABLE:
             print(
-                "[teleop] WARNING: soarm_learn not installed. "
-                "Install with: pip install -e soarm_learn/"
+                "[teleop] WARNING: soarm_lerobot not installed. "
+                "Install with: pip install -e soarm_lerobot/"
             )
         else:
             recorder = TeleopRecorder(
