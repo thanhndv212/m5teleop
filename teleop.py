@@ -367,7 +367,7 @@ def main() -> None:
     def _start_servo(port: str) -> bool:
         nonlocal servo_connected
         arm.disconnect()
-        arm._port = port
+        arm.port = port
         try:
             arm.connect()
             servo_connected = True
@@ -435,7 +435,7 @@ def main() -> None:
                     imu_connected=imu_connected,
                     imu_port=imu_port or "",
                     servo_connected=servo_connected,
-                    servo_port=arm._port or "",
+                    servo_port=arm.port or "",
                 )
 
             # -- Get latest IMU sample (non-blocking)

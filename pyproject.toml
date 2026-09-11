@@ -10,6 +10,7 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Thanh Nguyen" }]
 dependencies = [
+    "soarm_sdk",
     "pin-pink>=4.2.0",
     "quadprog>=0.1.12",
     "pinocchio>=3.0.0",

@@ -7,8 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`ArmInterface` now delegates transport to `soarm_sdk`** instead of
+  wrapping lerobot's `SOFollower` itself: `soarm_sdk.LeRobotRobot` on
+  hardware, `soarm_sdk.NullRobot` under `--dry-run`. Both satisfy
+  `soarm_sdk.RobotInterface`, so teleop's arm is now the same kind of
+  object a planner or an RL policy drives — the two servo stacks in this
+  workspace stop being parallel universes. `soarm_sdk` is a new dependency;
+  lerobot stays an optional one, still imported only when actually talking
+  to hardware.
+- `ArmInterface`'s public API is unchanged (`get_joint_degrees`,
+  `get_joint_radians`, `send_joint_degrees`, the gripper toggle), so
+  `teleop.py` needed no changes beyond using the new `arm.port` property
+  instead of reaching into `arm._port`.
+- **`--dry-run` now tracks commanded state** rather than reporting zeros:
+  read-back reflects the last command, and the arm starts at the configured
+  home pose instead of a zero vector. More representative offline, but it
+  does mean IK is seeded from home rather than zeros in dry-run.
+- The gripper stays driven by this package's `GRIPPER_OPEN_DEG` /
+  `GRIPPER_CLOSED_DEG` in lerobot degrees, **not** through the SDK's new
+  `Robot.set_gripper()`. lerobot's normalized gripper scale runs the
+  opposite way to the jaw's URDF radians that the SDK's `gripper:` config
+  block describes, and the jaw here is commanded open-loop from a button at
+  50 Hz, where a read-back-based `gripper_is_open` would add a bus read to
+  the control loop. Both reasons are written up in the module docstring.
+
 ### Added
 
+- `tests/` — first tests for this package: `test_arm_interface.py` covers
+  the arm transport on the dry-run path, so it needs no serial port, no
+  lerobot, and none of the heavy IK dependencies.
 - `LICENSE` (MIT) and a `license`/`authors` block in `pyproject.toml`,
   which previously declared neither.
 - This file.
