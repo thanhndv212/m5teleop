@@ -8,9 +8,19 @@ from pathlib import Path
 
 _HERE = Path(__file__).parent
 
-# Absolute path to the SO100 URDF
+# Absolute path to the SO-101 URDF. The physical arm in this workspace is an
+# SO-101, and the two revisions do not merely differ in reach: SO100 puts the
+# shoulder_lift and elbow_flex zeros at one end of travel ([0, 3.5] and
+# [-3.1416, 0]) while SO101 centres them ([-1.745, 1.745] and [-1.69, 1.69]).
+# Solving IK against the wrong revision therefore misplaces those joints by
+# more than a radian, and disagrees with soarm_sdk's calibration, soarm_tamp
+# and soarm_mjlab, all of which are SO101-framed.
 URDF_PATH: str = str(
-    _HERE.parent.parent / "SO-ARM100" / "Simulation" / "SO100" / "so100.urdf"
+    _HERE.parent.parent
+    / "SO-ARM100"
+    / "Simulation"
+    / "SO101"
+    / "so101_new_calib.urdf"
 )
 
 # ---------------------------------------------------------------------------

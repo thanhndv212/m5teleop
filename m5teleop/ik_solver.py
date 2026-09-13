@@ -16,7 +16,7 @@ class IKSolver:
     Parameters
     ----------
     urdf_path:
-        Absolute path to ``so100.urdf``.
+        Absolute path to ``so101_new_calib.urdf``.
     ee_frame:
         Name of the end-effector link in the URDF (default ``"jaw"``).
 

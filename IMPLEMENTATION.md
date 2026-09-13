@@ -58,7 +58,7 @@ soarm-ws/
 │   └── requirements.txt
 │
 └── SO-ARM100/
-    └── Simulation/SO100/so100.urdf  ← Robot model (6-DOF)
+    └── Simulation/SO101/so101_new_calib.urdf  ← Robot model (6-DOF)
 ```
 
 ---
@@ -161,7 +161,7 @@ Key parameters:
 ### Phase 3b — IKSolver ✅
 **File:** `m5teleop/m5teleop/ik_solver.py`
 
-- Loads `so100.urdf` with `pin.buildModelFromUrdf` (kinematics-only; no mesh needed)
+- Loads `so101_new_calib.urdf` with `pin.buildModelFromUrdf` (kinematics-only; no mesh needed)
 - `pink.FrameTask("jaw")` + `PostureTask` as regulariser
 - `step(twist, dt)` integrates EE target SE3, solves QP, returns joint config (rad)
 - `q_to_degrees()` → lerobot-compatible dict (5 revolute joints; gripper handled separately)
